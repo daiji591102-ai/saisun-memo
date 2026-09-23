@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>採寸メモ</title>
+<meta name="theme-color" content="#0f0e0c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;700&family=DM+Mono:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0f0e0c;
+    --surface: #1a1916;
+    --surface2: #242220;
+    --ink: #f0ece4;
+    --ink-dim: #8a8680;
+    --accent: #c8a882;
+    --border: #2e2c28;
+    --red: #e05555;
+    --green: #6abf8a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg); color: var(--ink);
+    height: 100svh;
+    overflow: hidden;
+    display: flex; flex-direction: column; align-items: center;
+  }
+
+  header {
+    width: 100%; padding: 12px 20px 10px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  header h1 { font-family: 'Shippori Mincho', serif; font-size: 1.1rem; font-weight: 600; letter-spacing: 0.08em; color: var(--accent); }
+  .header-right { display: flex; gap: 8px; align-items: center; }
+  .clear-all-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--ink-dim);
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 10px; cursor: pointer; touch-action: manipulation;
+  }
+
+  /* 入力エリア：上1/3 */
+  .main {
+    width: 100%; max-width: 520px;
+    padding: 10px 16px 0;
+    display: flex; flex-direction: column; gap: 8px;
+    max-height: 33svh;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  /* 商品名 */
+  .name-row { display: flex; gap: 8px; align-items: center; }
+  .name-input {
+    flex: 1; padding: 8px 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--ink);
+    font-family: 'DM Mono', monospace; font-size: 0.78rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .name-input::placeholder { color: var(--ink-dim); }
+  .name-input.listening { border-color: var(--red); }
+  .mic-sm {
+    width: 36px; height: 36px; flex-shrink: 0;
+    border-radius: 50%; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink-dim);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; touch-action: manipulation; transition: all 0.15s;
+  }
+  .mic-sm.listening { border-color: var(--red); color: var(--red); background: rgba(224,85,85,0.1); animation: pulse 1.2s infinite; }
+
+  /* 録音ボタン */
+  .record-area { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .record-btn {
+    width: 62px; height: 62px; border-radius: 50%;
+    border: 2px solid var(--accent); background: var(--surface);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; touch-action: manipulation;
+  }
+  .record-btn.recording { border-color: var(--red); background: rgba(224,85,85,0.12); animation: pulse 1.2s infinite; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(224,85,85,0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(224,85,85,0); }
+  }
+  .mic-icon { width: 24px; height: 24px; fill: var(--accent); transition: fill 0.2s; }
+  .record-btn.recording .mic-icon { fill: var(--red); }
+  .record-label { font-size: 0.62rem; letter-spacing: 0.1em; color: var(--ink-dim); text-transform: uppercase; }
+
+  /* ライブ表示 */
+  .live-box {
+    width: 100%; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; min-height: 34px;
+    font-size: 0.72rem; color: var(--ink-dim); line-height: 1.5;
+    transition: border-color 0.2s; word-break: break-all;
+  }
+  .live-box.active { border-color: var(--accent); color: var(--ink); }
+
+  /* ボタン行 */
+  .btn-row { display: flex; gap: 8px; }
+  .next-btn {
+    flex: 1; padding: 8px;
+    background: var(--surface); border: 1px solid var(--accent);
+    border-radius: 8px; color: var(--accent);
+    font-family: 'DM Mono', monospace; font-size: 0.75rem;
+    cursor: pointer; touch-action: manipulation; transition: all 0.15s;
+    letter-spacing: 0.06em;
+  }
+  .next-btn:active { background: var(--accent); color: #1a1614; }
+  .add-btn {
+    flex: 1; padding: 8px;
+    background: var(--accent); border: none; border-radius: 8px;
+    font-family: 'DM Mono', monospace; font-size: 0.75rem; font-weight: 500;
+    color: #1a1614; cursor: pointer; touch-action: manipulation; transition: opacity 0.15s;
+  }
+  .add-btn:active { opacity: 0.8; }
+
+  /* ステータス・区切り */
+  .status-bar {
+    width: 100%; max-width: 520px; padding: 4px 16px;
+    font-size: 0.65rem; color: var(--ink-dim); text-align: center; min-height: 22px;
+    flex-shrink: 0;
+  }
+  .status-bar.error { color: var(--red); }
+  .status-bar.success { color: var(--green); }
+
+  .divider { height: 1px; background: var(--border); width: 100%; flex-shrink: 0; }
+
+  /* ───── 表エリア：残り全体 ───── */
+  .table-section {
+    flex: 1;
+    overflow-y: auto;
+    width: 100%;
+    padding: 0 10px 10px;
+    margin-top: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px; padding-top: 6px;
+    position: sticky; top: 0; background: var(--bg); z-index: 1;
+  }
+  .table-title { font-family: 'Shippori Mincho', serif; font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+  .table-actions { display: flex; gap: 8px; }
+  .tbl-btn {
+    font-family: 'DM Mono', monospace; font-size: 0.62rem; color: var(--ink-dim);
+    background: none; border: 1px solid var(--border); border-radius: 4px;
+    padding: 4px 10px; cursor: pointer; touch-action: manipulation; transition: all 0.15s;
+  }
+  .tbl-btn:active { border-color: var(--accent); color: var(--accent); }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 0.58rem; white-space: nowrap;
+  }
+  thead tr { background: var(--surface2); }
+  th {
+    padding: 5px 5px; text-align: left;
+    color: var(--ink-dim); font-weight: 400; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.5rem; text-transform: uppercase;
+  }
+  td {
+    padding: 6px 5px; border-bottom: 1px solid var(--border);
+    color: var(--ink); vertical-align: middle;
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr { background: var(--surface); transition: background 0.1s; }
+  tbody tr:nth-child(even) { background: var(--surface2); }
+  .td-name {
+    font-family: 'Shippori Mincho', serif; font-weight: 600; color: var(--accent);
+    min-width: 60px; font-size: 0.58rem;
+  }
+  .td-val { text-align: left; min-width: 28px; }
+  .td-empty { color: var(--ink-dim); }
+  .td-del { text-align: center; padding: 3px 6px; }
+  .del-btn {
+    background: none; border: none; color: var(--ink-dim);
+    font-size: 0.68rem; cursor: pointer; padding: 3px 5px;
+    border-radius: 4px; touch-action: manipulation;
+  }
+  .del-btn:active { color: var(--red); }
+
+  .td-editable { cursor: pointer; }
+  .td-editable:hover { background: var(--surface2) !important; }
+  .empty-table {
+    text-align: center; padding: 28px; color: var(--ink-dim);
+    font-size: 0.75rem; line-height: 2;
+    border: 1px dashed var(--border); border-radius: 8px;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>採寸メモ</h1>
+  <div class="header-right">
+    <button class="sub-btn" id="exportBtn" type="button">書出</button>
+    <button class="sub-btn" id="importBtn" type="button">読込</button>
+    <input id="importFile" type="file" accept="application/json,.json" hidden>
+    <button class="clear-all-btn" id="clearAllBtn">全削除</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- 商品名 -->
+  <div class="name-row">
+    <input class="name-input" id="productName" placeholder="商品名・ブランド名" type="text">
+    <button class="mic-sm" id="nameMicBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 8a1 1 0 0 1 1 1 6 6 0 0 0 12 0 1 1 0 1 1 2 0 8 8 0 0 1-7 7.93V22h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A8 8 0 0 1 4 12a1 1 0 0 1 1-1z"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- 録音 -->
+  <div class="record-area">
+    <button class="record-btn" id="recordBtn">
+      <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm0 2a2 2 0 0 0-2 2v6a2 2 0 0 0 4 0V5a2 2 0 0 0-2-2zm-7 8a1 1 0 0 1 1 1 6 6 0 0 0 12 0 1 1 0 1 1 2 0 8 8 0 0 1-7 7.93V22h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A8 8 0 0 1 4 12a1 1 0 0 1 1-1z"/>
+      </svg>
+    </button>
+    <span class="record-label" id="recordLabel">タップして録音</span>
+  </div>
+
+  <div class="live-box" id="liveBox">録音した内容がここに表示されます</div>
+
+  <div class="btn-row">
+    <button class="next-btn" id="nextProductBtn">次の商品へ →</button>
+    <button class="add-btn" id="addBtn">＋ 手動で表に追加</button>
+  </div>
+
+</div>
+
+<div class="status-bar" id="statusBar"></div>
+<div class="divider"></div>
+
+<!-- 表 -->
+<div class="table-section">
+  <div class="table-header-row">
+    <span class="table-title">採寸一覧</span>
+    <div class="table-actions">
+      <button class="tbl-btn" id="copyTableBtn">テキストコピー</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <div id="tableArea"></div>
+  </div>
+</div>
+
+<script>
+const recordBtn    = document.getElementById('recordBtn');
+const recordLabel  = document.getElementById('recordLabel');
+const liveBox      = document.getElementById('liveBox');
+const productName  = document.getElementById('productName');
+const nameMicBtn   = document.getElementById('nameMicBtn');
+const addBtn       = document.getElementById('addBtn');
+const tableArea    = document.getElementById('tableArea');
+const statusBar    = document.getElementById('statusBar');
+const clearAllBtn  = document.getElementById('clearAllBtn');
+const copyTableBtn = document.getElementById('copyTableBtn');
+
+// 採寸項目定義（表の列順）
+const COLUMNS = [
+  { key: '肩幅',    label: '肩幅' },
+  { key: '袖丈',    label: '袖丈' },
+  { key: '身幅',    label: '身幅' },
+  { key: '着丈',    label: '着丈' },
+  { key: 'ウエスト', label: 'ウエスト' },
+  { key: 'ヒップ',  label: 'ヒップ' },
+  { key: '股上',    label: '股上' },
+  { key: '股下',    label: '股下' },
+  { key: 'わたり幅', label: 'わたり' },
+  { key: '裾幅',    label: '裾幅' },
+  { key: 'バスト',  label: 'バスト' },
+  { key: '全長',    label: '全長' },
+  { key: 'ヒール高', label: 'ヒール' },
+];
+
+let rows = []; // { name, measurements: { '肩幅': '30', ... }, rawText }
+let recognition = null;
+let isRecording = false;
+let currentText = '';
+let nameRecognition = null;
+let isNameRecording = false;
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (!SR) {
+  statusBar.textContent = '音声認識非対応です。Chrome最新版をお使いください。';
+  statusBar.className = 'status-bar error';
+}
+
+// ── 採寸録音 ──
+recordBtn.addEventListener('click', () => {
+  setStatus('ボタンを認識しました');
+  if (isRecording) stopRecording();
+  else startRecording();
+});
+
+function startRecording() {
+  if (!SR) return;
+  currentText = '';
+  liveBox.textContent = '聞いています...';
+  liveBox.classList.add('active');
+
+  recognition = new SR();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+
+  recognition.onstart = () => {
+    isRecording = true;
+    recordBtn.classList.add('recording');
+    recordLabel.textContent = '認識中...';
+    setStatus('録音中...');
+  };
+
+  recognition.onresult = (e) => {
+    currentText = e.results[0][0].transcript.trim();
+    liveBox.textContent = currentText;
+  };
+
+  recognition.onend = () => { if (isRecording) stopRecording(); };
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech') return;
+    setStatus('エラー: ' + e.error, 'error');
+    stopRecording();
+  };
+
+  try { recognition.start(); } catch(e) { setStatus('マイクを許可してください', 'error'); }
+}
+
+function stopRecording() {
+  isRecording = false;
+  if (recognition) { recognition.onend = null; try { recognition.stop(); } catch(e) {} recognition = null; }
+  recordBtn.classList.remove('recording');
+  recordLabel.textContent = 'タップして録音';
+  liveBox.classList.remove('active');
+
+  const text = currentText.trim();
+  if (text) {
+    const name = productName.value.trim() || `商品${rows.length + 1}`;
+    const measurements = parseMeasurements(text);
+
+    // 同じ商品名の行が既にあれば追記、なければ新規追加
+    const existing = rows.find(r => r.name === name);
+    if (existing) {
+      Object.assign(existing.measurements, measurements);
+      existing.rawText += '　' + text;
+    } else {
+      rows.push({ name, measurements, rawText: text });
+    }
+
+    renderTable();
+    setStatus(`✓ "${name}" に追記しました！`, 'success');
+    currentText = '';
+    liveBox.textContent = '録音した内容がここに表示されます';
+  } else {
+    setStatus('音声が認識されませんでした', 'error');
+    liveBox.textContent = '録音した内容がここに表示されます';
+  }
+}
+
+// ── 表に追加 ──
+addBtn.addEventListener('click', () => {
+  const name = productName.value.trim() || `商品${rows.length + 1}`;
+  const text = currentText.trim() || liveBox.textContent.trim();
+
+  if (!text || text === '録音した内容がここに表示されます') {
+    setStatus('先に録音してください', 'error');
+    return;
+  }
+
+  const measurements = parseMeasurements(text);
+  // 重複チェックなし：ボタンを押すたびに必ず追加
+  rows.push({ name, measurements, rawText: text });
+
+  // リセット
+  productName.value = '';
+  currentText = '';
+  liveBox.textContent = '録音した内容がここに表示されます';
+
+  renderTable();
+  setStatus(`✓ "${name}" を追加しました！`, 'success');
+});
+
+// ── 次の商品へ ──
+document.getElementById('nextProductBtn').addEventListener('click', () => {
+  productName.value = '';
+  currentText = '';
+  liveBox.textContent = '録音した内容がここに表示されます';
+  setStatus('次の商品をどうぞ', 'success');
+  productName.focus();
+});
+
+nameMicBtn.addEventListener('click', () => {
+  if (isNameRecording) stopNameRecording();
+  else startNameRecording();
+});
+
+function startNameRecording() {
+  if (!SR) return;
+  isNameRecording = true;
+  nameMicBtn.classList.add('listening');
+  productName.classList.add('listening');
+  productName.placeholder = '聞いています...';
+
+  nameRecognition = new SR();
+  nameRecognition.lang = 'ja-JP';
+  nameRecognition.continuous = false;
+  nameRecognition.interimResults = false;
+
+  nameRecognition.onresult = (e) => {
+    productName.value = e.results[0][0].transcript.trim();
+  };
+  nameRecognition.onend = () => stopNameRecording();
+  nameRecognition.onerror = () => stopNameRecording();
+
+  try { nameRecognition.start(); } catch(e) { stopNameRecording(); }
+}
+
+function stopNameRecording() {
+  isNameRecording = false;
+  nameMicBtn.classList.remove('listening');
+  productName.classList.remove('listening');
+  productName.placeholder = '商品名・ブランド名';
+  if (nameRecognition) { nameRecognition.onend = null; try { nameRecognition.stop(); } catch(e) {} nameRecognition = null; }
+}
+
+// ── 採寸パース ──
+function parseMeasurements(text) {
+  const patterns = [
+    { keys: ['肩幅'],                key: '肩幅' },
+    { keys: ['袖丈', 'そで丈'],       key: '袖丈' },
+    { keys: ['身幅'],                key: '身幅' },
+    { keys: ['着丈'],                key: '着丈' },
+    { keys: ['ウエスト', 'ウェスト'], key: 'ウエスト' },
+    { keys: ['ヒップ'],              key: 'ヒップ' },
+    { keys: ['股上'],                key: '股上' },
+    { keys: ['股下'],                key: '股下' },
+    { keys: ['わたり幅', 'わたり'],   key: 'わたり幅' },
+    { keys: ['裾幅', '裾'],           key: '裾幅' },
+    { keys: ['バスト'],              key: 'バスト' },
+    { keys: ['全長'],                key: '全長' },
+    { keys: ['ヒール'],              key: 'ヒール高' },
+  ];
+  const result = {};
+  for (const p of patterns) {
+    for (const k of p.keys) {
+      const m = text.match(new RegExp(k + '[はのが]?\\s*(\\d+(?:\\.\\d+)?)', 'i'));
+      if (m) { result[p.key] = m[1]; break; }
+    }
+  }
+  return result;
+}
+
+// ── 表を描画（インライン編集対応） ──
+function renderTable() {
+  persistRows();   // 変更のたびに保存する
+  if (rows.length === 0) {
+    tableArea.innerHTML = '<div class="empty-table">採寸を録音して「表に追加」を押すと<br>ここに一覧が表示されます</div>';
+    return;
+  }
+
+  const allCols = COLUMNS;
+
+  const table = document.createElement('table');
+
+  // ヘッダー
+  const thead = document.createElement('thead');
+  thead.innerHTML = `<tr>
+    <th>商品名</th>
+    ${allCols.map(c => `<th>${c.label}</th>`).join('')}
+    <th></th>
+  </tr>`;
+  table.appendChild(thead);
+
+  // ボディ
+  const tbody = document.createElement('tbody');
+  rows.forEach((r, rowIdx) => {
+    const tr = document.createElement('tr');
+
+    // 商品名セル（編集可）
+    const nameTd = document.createElement('td');
+    nameTd.className = 'td-name td-editable';
+    nameTd.textContent = r.name;
+    nameTd.addEventListener('click', () => startCellEdit(nameTd, r.name, (val) => {
+      rows[rowIdx].name = val;
+      renderTable();
+    }));
+    tr.appendChild(nameTd);
+
+    // 採寸セル（編集可）
+    allCols.forEach(col => {
+      const td = document.createElement('td');
+      td.className = 'td-val td-editable' + (r.measurements[col.key] ? '' : ' td-empty');
+      td.textContent = r.measurements[col.key] ? r.measurements[col.key] + 'cm' : '—';
+      td.addEventListener('click', () => {
+        const current = r.measurements[col.key] || '';
+        startCellEdit(td, current, (val) => {
+          const num = val.replace(/cm/g, '').trim();
+          if (num) rows[rowIdx].measurements[col.key] = num;
+          else delete rows[rowIdx].measurements[col.key];
+          renderTable();
+        });
+      });
+      tr.appendChild(td);
+    });
+
+    // 削除ボタン
+    const delTd = document.createElement('td');
+    delTd.className = 'td-del';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del-btn';
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => {
+      rows.splice(rowIdx, 1);
+      renderTable();
+    });
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
+
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  tableArea.innerHTML = '';
+  tableArea.appendChild(table);
+}
+
+// ── インライン編集 ──
+function startCellEdit(td, currentVal, onSave) {
+  if (td.querySelector('input')) return; // 既に編集中
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = currentVal;
+  input.style.cssText = `
+    width: 100%; background: var(--surface2); border: 1px solid var(--accent);
+    border-radius: 4px; color: var(--ink); font-family: 'DM Mono', monospace;
+    font-size: 0.72rem; padding: 3px 5px; outline: none;
+  `;
+
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  function save() {
+    onSave(input.value.trim());
+  }
+
+  input.addEventListener('blur', save);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    if (e.key === 'Escape') { renderTable(); }
+  });
+}
+
+// ── テキストコピー ──
+copyTableBtn.addEventListener('click', () => {
+  if (rows.length === 0) { setStatus('データがありません', 'error'); return; }
+  let text = rows.map(r => {
+    let out = `○ブランド\n${r.name}\n\n○サイズ\n`;
+    const ms = Object.entries(r.measurements);
+    if (ms.length > 0) {
+      ms.forEach(([k, v]) => { out += `${k}：${v}cm\n`; });
+      out += `平置き実寸。\n素人採寸ですので、多少の誤差はご了承ください`;
+    } else {
+      out += r.rawText;
+    }
+    return out;
+  }).join('\n\n─────────────\n\n');
+
+  navigator.clipboard.writeText(text).then(() => {
+    copyTableBtn.textContent = '✓ コピー済';
+    setTimeout(() => { copyTableBtn.textContent = 'テキストコピー'; }, 2000);
+  });
+});
+
+// ── 全削除 ──
+clearAllBtn.addEventListener('click', () => {
+  if (rows.length === 0) return;
+  if (confirm('すべての採寸データを削除しますか？')) { rows = []; renderTable(); }
+});
+
+function setStatus(msg, type = '') {
+  statusBar.textContent = msg;
+  statusBar.className = 'status-bar' + (type ? ' ' + type : '');
+  if (type === 'success') setTimeout(() => { statusBar.textContent = ''; statusBar.className = 'status-bar'; }, 2500);
+}
+
+
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+
+// ── 保存と復元（2026-09-23 追加）──────────────────────────────────────────
+//   【直した問題】このアプリは rows をメモリにしか持っておらず、画面を閉じると
+//   採寸が消えていた。さらに Android でダウンロードした file:// のまま開くと
+//   Chrome がストレージを許可しないため、そもそも保存できなかった。
+//   → GitHub Pages(https) から開く形にしたうえで localStorage に自動保存する。
+//   保存の入口は renderTable() ひとつに集約する（rows を変える処理は必ず
+//   renderTable() を呼ぶので、ここだけ押さえれば取りこぼさない）。
+const STORE_KEY = 'saisun-memo-rows-v1';
+
+function persistRows() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({ v: 1, saved: Date.now(), rows }));
+  } catch (e) {
+    setStatus('保存できませんでした（ブラウザのストレージ制限）', 'error');
+  }
+}
+
+function restoreRows() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return 0;
+    const d = JSON.parse(raw);
+    if (d && Array.isArray(d.rows)) { rows = d.rows; return rows.length; }
+  } catch (e) { /* 壊れていたら黙って新規で始める（データ0件より復旧を優先しない） */ }
+  return 0;
+}
+
+// ── 書き出し / 読み込み（端末を変えるとき・バックアップ用）─────────────────
+exportBtn.addEventListener('click', () => {
+  if (rows.length === 0) { setStatus('データがありません', 'error'); return; }
+  const blob = new Blob([JSON.stringify({ v: 1, saved: Date.now(), rows }, null, 1)],
+                        { type: 'application/json' });
+  const a = document.createElement('a');
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  a.href = URL.createObjectURL(blob);
+  a.download = `採寸メモ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus(`${rows.length}件を書き出しました`, 'success');
+});
+
+importBtn.addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', () => {
+  const f = importFile.files && importFile.files[0];
+  if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const d = JSON.parse(fr.result);
+      const add = (d && Array.isArray(d.rows)) ? d.rows : (Array.isArray(d) ? d : null);
+      if (!add) throw new Error('形式が違います');
+      // 既存は消さずに後ろへ足す（読み込みで今のデータを失わない）
+      rows = rows.concat(add);
+      renderTable();
+      setStatus(`${add.length}件を読み込みました`, 'success');
+    } catch (e) {
+      setStatus('読み込めませんでした（JSONを確認してください）', 'error');
+    }
+    importFile.value = '';
+  };
+  fr.readAsText(f);
+});
+
+// ── オフライン動作（Service Worker）──────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+// 初期描画（保存済みがあれば復元してから）
+const _restored = restoreRows();
+renderTable();
+if (_restored) setStatus(`前回の${_restored}件を復元しました`, 'success');
+
+</script>
+</body>
+</html>
