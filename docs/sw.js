@@ -1,7 +1,7 @@
 // 採寸メモのオフライン動作。
 // 方針: 取得できたものはキャッシュを更新し、オフラインではキャッシュを返す
 // （stale-while-revalidate）。更新を取りこぼさず、圏外でも起動できる。
-const CACHE = 'saisun-memo-v1';
+const CACHE = 'saisun-memo-v2';  // 2026-09-27 固定列・×左端で更新
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

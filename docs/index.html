@@ -159,7 +159,8 @@
   }
   .tbl-btn:active { border-color: var(--accent); color: var(--accent); }
 
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* position+z-index で重なりの文脈を閉じ、固定列が上の見出し行(sticky)に被らないようにする */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; position: relative; z-index: 0; }
 
   table {
     width: 100%; border-collapse: collapse;
@@ -185,13 +186,27 @@
   }
   .td-val { text-align: left; min-width: 28px; }
   .td-empty { color: var(--ink-dim); }
-  .td-del { text-align: center; padding: 3px 6px; }
+  /* ── 固定列（2026-09-27）: 左から「×」→「商品名」を横スクロールしても残す ──
+     ・背景を不透明にして下の列が透けないようにする（tr の縞模様を inherit）
+     ・z-index: 固定セル 2 / 固定ヘッダ 3（通常の th/td より上） */
+  .col-del, .col-name { position: sticky; z-index: 2; background: inherit; }
+  th.col-del, th.col-name { z-index: 3; background: var(--surface2); }
+  .col-del {
+    left: 0; width: 32px; min-width: 32px; max-width: 32px;
+    padding: 0; text-align: center;
+  }
+  .col-name {
+    left: 32px; max-width: 120px; overflow: hidden; text-overflow: ellipsis;
+    box-shadow: 1px 0 0 var(--border), 4px 0 6px -2px rgba(0,0,0,0.5);
+  }
   .del-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 34px; margin: 0 auto;
     background: none; border: none; color: var(--ink-dim);
-    font-size: 0.68rem; cursor: pointer; padding: 3px 5px;
+    font-size: 0.72rem; cursor: pointer; padding: 0;
     border-radius: 4px; touch-action: manipulation;
   }
-  .del-btn:active { color: var(--red); }
+  .del-btn:active { color: var(--red); background: rgba(224,85,85,0.12); }
 
   .td-editable { cursor: pointer; }
   .td-editable:hover { background: var(--surface2) !important; }
@@ -483,9 +498,9 @@ function renderTable() {
   // ヘッダー
   const thead = document.createElement('thead');
   thead.innerHTML = `<tr>
-    <th>商品名</th>
+    <th class="col-del"></th>
+    <th class="col-name">商品名</th>
     ${allCols.map(c => `<th>${c.label}</th>`).join('')}
-    <th></th>
   </tr>`;
   table.appendChild(thead);
 
@@ -494,9 +509,24 @@ function renderTable() {
   rows.forEach((r, rowIdx) => {
     const tr = document.createElement('tr');
 
-    // 商品名セル（編集可）
+    // 削除ボタン（行の一番左・固定列。確認なしで即削除＝従来どおり）
+    const delTd = document.createElement('td');
+    delTd.className = 'td-del col-del';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'del-btn';
+    delBtn.type = 'button';
+    delBtn.setAttribute('aria-label', 'この行を削除');
+    delBtn.textContent = '✕';
+    delBtn.addEventListener('click', () => {
+      rows.splice(rowIdx, 1);
+      renderTable();
+    });
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
+
+    // 商品名セル（編集可・固定列）
     const nameTd = document.createElement('td');
-    nameTd.className = 'td-name td-editable';
+    nameTd.className = 'td-name td-editable col-name';
     nameTd.textContent = r.name;
     nameTd.addEventListener('click', () => startCellEdit(nameTd, r.name, (val) => {
       rows[rowIdx].name = val;
@@ -520,19 +550,6 @@ function renderTable() {
       });
       tr.appendChild(td);
     });
-
-    // 削除ボタン
-    const delTd = document.createElement('td');
-    delTd.className = 'td-del';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'del-btn';
-    delBtn.textContent = '✕';
-    delBtn.addEventListener('click', () => {
-      rows.splice(rowIdx, 1);
-      renderTable();
-    });
-    delTd.appendChild(delBtn);
-    tr.appendChild(delTd);
 
     tbody.appendChild(tr);
   });
