@@ -293,6 +293,7 @@ const copyTableBtn = document.getElementById('copyTableBtn');
 const COLUMNS = [
   { key: '肩幅',    label: '肩幅' },
   { key: '袖丈',    label: '袖丈' },
+  { key: '裄丈',    label: '裄丈' },   // 2026-09-27 追加（袖丈の右隣）
   { key: '身幅',    label: '身幅' },
   { key: '着丈',    label: '着丈' },
   { key: 'ウエスト', label: 'ウエスト' },
@@ -336,6 +337,7 @@ function startRecording() {
   recognition.lang = 'ja-JP';
   recognition.continuous = false;
   recognition.interimResults = false;
+  recognition.maxAlternatives = 5;   // 候補を複数もらい、採寸を一番多く読めたものを使う
 
   recognition.onstart = () => {
     isRecording = true;
@@ -345,7 +347,8 @@ function startRecording() {
   };
 
   recognition.onresult = (e) => {
-    currentText = e.results[0][0].transcript.trim();
+    const alts = Array.from(e.results[0], a => a.transcript.trim()).filter(Boolean);
+    currentText = pickBestTranscript(alts);
     liveBox.textContent = currentText;
   };
 
@@ -457,30 +460,87 @@ function stopNameRecording() {
 }
 
 // ── 採寸パース ──
-function parseMeasurements(text) {
-  const patterns = [
-    { keys: ['肩幅'],                key: '肩幅' },
-    { keys: ['袖丈', 'そで丈'],       key: '袖丈' },
-    { keys: ['身幅'],                key: '身幅' },
-    { keys: ['着丈'],                key: '着丈' },
-    { keys: ['ウエスト', 'ウェスト'], key: 'ウエスト' },
-    { keys: ['ヒップ'],              key: 'ヒップ' },
-    { keys: ['股上'],                key: '股上' },
-    { keys: ['股下'],                key: '股下' },
-    { keys: ['わたり幅', 'わたり'],   key: 'わたり幅' },
-    { keys: ['裾幅', '裾'],           key: '裾幅' },
-    { keys: ['バスト'],              key: 'バスト' },
-    { keys: ['全長'],                key: '全長' },
-    { keys: ['ヒール'],              key: 'ヒール高' },
-  ];
-  const result = {};
-  for (const p of patterns) {
-    for (const k of p.keys) {
-      const m = text.match(new RegExp(k + '[はのが]?\\s*(\\d+(?:\\.\\d+)?)', 'i'));
-      if (m) { result[p.key] = m[1]; break; }
-    }
+//   2026-09-27 作り直し。【直した問題】音声認識は「股下」を「またした/又下/マタ下」、
+//   「裾幅」を「すそ幅/袖幅」のように読み・誤変換で返すことが多く、漢字の完全一致だけの
+//   旧方式では股下・股上・裾幅がほぼ入らなかった。漢数字（七十二）も拾えなかった。
+//   → ①正規化（NFKC で全半角統一・カタカナ→ひらがな・空白除去・漢数字→算用数字）
+//     ②別名辞書（読み・表記ゆれ・よくある誤変換）を「先頭から走査・各位置で最長一致」
+//       で照合（「ゆきたけ」の中の「きたけ」＝着丈 等の取り違えを防ぐ）
+//     ③項目名から次の項目名までの区間にある最初の数値を値にする
+//   別名は正規化後の形で照合するので、カタカナ表記はひらがなで書けば両方に効く。
+const ALIASES = {
+  '肩幅':   ['肩幅', 'かたはば', '肩はば', 'かた幅', '方幅', '型幅', '形幅'],
+  '袖丈':   ['袖丈', 'そでたけ', 'そで丈', '袖たけ', '袖竹', 'そで竹'],
+  '裄丈':   ['裄丈', 'ゆきたけ', 'ゆき丈', '裄たけ', '行丈', '行きたけ', '行き丈', '雪丈', '雪たけ', '雪竹', 'ゆき竹', '裄'],
+  '身幅':   ['身幅', 'みはば', '身はば', 'み幅', '見幅', '見はば'],
+  '着丈':   ['着丈', 'きたけ', '着たけ', 'き丈', '着竹', '来た毛'],
+  'ウエスト': ['ウエスト', 'ウェスト', 'ウエス', '上すと'],
+  'ヒップ': ['ヒップ', 'ヒプ'],
+  '股上':   ['股上', 'またがみ', 'またかみ', 'またうえ', 'また上', 'また神', '又上', '又がみ', '又うえ', '股うえ', '股がみ', '股神', 'まだ上', 'まだうえ'],
+  '股下':   ['股下', 'またした', 'また下', 'またしだ', '又下', '又した', '股した', 'まだした', 'まだ下', 'まった下'],
+  'わたり幅': ['わたり幅', 'わたりはば', 'わたり', '渡り幅', '渡りはば', '渡り'],
+  // 「袖幅」という採寸項目は無いので、すそはば の誤変換として裾幅に寄せる
+  '裾幅':   ['裾幅', 'すそはば', 'すそ幅', '裾はば', 'すその幅', '裾の幅', '袖幅', 'そではば', 'そで幅', '袖はば', '裾', 'すそ'],
+  'バスト': ['バスト', '場すと'],
+  '全長':   ['全長', 'ぜんちょう', '全ちょう', '前長'],
+  'ヒール高': ['ヒール高', 'ヒール', 'ひーるだか', 'ひーるたか'],
+};
+
+const KANJI_DIGIT = { '〇': 0, '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+function kanjiToNumber(s) {
+  if (!/[十百]/.test(s)) return s.split('').map(c => KANJI_DIGIT[c]).join('');   // 七二 → 72
+  let total = 0, cur = 0;
+  for (const c of s) {
+    if (c === '百') { total += (cur || 1) * 100; cur = 0; }
+    else if (c === '十') { total += (cur || 1) * 10; cur = 0; }
+    else cur = KANJI_DIGIT[c];
   }
+  return String(total + cur);
+}
+
+function normalizeSpeech(text) {
+  return String(text).normalize('NFKC')
+    .replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))  // カタカナ→ひらがな
+    .replace(/\s+/g, '')
+    .replace(/[〇零一二三四五六七八九十百]+/g, kanjiToNumber)
+    .replace(/(\d)点(\d)/g, '$1.$2')          // 72点5 → 72.5
+    .replace(/(\d)[,，](\d)(?!\d)/g, '$1.$2'); // 72,5 → 72.5
+}
+
+// 正規化済み別名 → 項目名（長い順）
+const ALIAS_LIST = Object.entries(ALIASES)
+  .flatMap(([key, as]) => as.map(a => ({ a: normalizeSpeech(a), key })))
+  .sort((x, y) => y.a.length - x.a.length);
+
+function parseMeasurements(text) {
+  const s = normalizeSpeech(text);
+  // 先頭から走査し、各位置で一番長い別名に一致したものを項目として確定する
+  const hits = [];
+  for (let i = 0; i < s.length; ) {
+    const m = ALIAS_LIST.find(x => s.startsWith(x.a, i));
+    if (m) { hits.push({ key: m.key, start: i, end: i + m.a.length }); i += m.a.length; }
+    else i++;
+  }
+  const found = {};
+  hits.forEach((h, n) => {
+    const seg = s.slice(h.end, n + 1 < hits.length ? hits[n + 1].start : s.length);
+    const num = seg.match(/\d+(?:\.\d+)?/);
+    if (num && !(h.key in found)) found[h.key] = num[0];
+  });
+  // 表の列順で返す（コピー書式の並びを従来どおりに保つ）
+  const result = {};
+  COLUMNS.forEach(c => { if (c.key in found) result[c.key] = found[c.key]; });
   return result;
+}
+
+// 認識候補（maxAlternatives）のうち、採寸を一番多く読み取れた候補を採用する（同数なら上位候補）
+function pickBestTranscript(alternatives) {
+  let best = alternatives[0] || '', bestN = -1;
+  alternatives.forEach(t => {
+    const n = Object.keys(parseMeasurements(t)).length;
+    if (n > bestN) { best = t; bestN = n; }
+  });
+  return best;
 }
 
 // ── 表を描画（インライン編集対応） ──
@@ -593,7 +653,10 @@ copyTableBtn.addEventListener('click', () => {
   if (rows.length === 0) { setStatus('データがありません', 'error'); return; }
   let text = rows.map(r => {
     let out = `○ブランド\n${r.name}\n\n○サイズ\n`;
-    const ms = Object.entries(r.measurements);
+    // 並びは表の列順（後からセル編集で足した項目も袖丈→裄丈のように正しい位置に出す）。未知の項目は末尾
+    const order = COLUMNS.map(c => c.key);
+    const rank = (k) => { const i = order.indexOf(k); return i < 0 ? order.length : i; };
+    const ms = Object.entries(r.measurements).sort((a, b) => rank(a[0]) - rank(b[0]));
     if (ms.length > 0) {
       ms.forEach(([k, v]) => { out += `${k}：${v}cm\n`; });
       out += `平置き実寸。\n素人採寸ですので、多少の誤差はご了承ください`;
