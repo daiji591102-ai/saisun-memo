@@ -323,6 +323,7 @@ if (!SR) {
 // ── 採寸録音 ──
 recordBtn.addEventListener('click', () => {
   setStatus('ボタンを認識しました');
+  unlockAudio();
   if (isRecording) stopRecording();
   else startRecording();
 });
@@ -356,6 +357,7 @@ function startRecording() {
   recognition.onerror = (e) => {
     if (e.error === 'no-speech') return;
     setStatus('エラー: ' + e.error, 'error');
+    if (e.error !== 'aborted') warnBeep();
     stopRecording();
   };
 
@@ -373,6 +375,13 @@ function stopRecording() {
   if (text) {
     const name = productName.value.trim() || `商品${rows.length + 1}`;
     const measurements = parseMeasurements(text);
+    if (Object.keys(measurements).length === 0) {
+      // 何か聞こえたが採寸（項目名＋数値）を1つも拾えなかった → 表には入れずに警告
+      warnBeep();
+      setStatus(`⚠ 数値を聞き取れませんでした：「${text}」もう一度どうぞ`, 'error');
+      currentText = '';
+      return;
+    }
 
     // 同じ商品名の行が既にあれば追記、なければ新規追加
     const existing = rows.find(r => r.name === name);
@@ -384,11 +393,17 @@ function stopRecording() {
     }
 
     renderTable();
-    setStatus(`✓ "${name}" に追記しました！`, 'success');
+    if (lastMissing.length) {
+      warnBeep();
+      setStatus(`⚠ ${lastMissing.join('・')} の数値を聞き取れませんでした（他は追記済み）`, 'error');
+    } else {
+      setStatus(`✓ "${name}" に追記しました！`, 'success');
+    }
     currentText = '';
     liveBox.textContent = '録音した内容がここに表示されます';
   } else {
-    setStatus('音声が認識されませんでした', 'error');
+    warnBeep();
+    setStatus('⚠ 音声が認識されませんでした', 'error');
     liveBox.textContent = '録音した内容がここに表示されます';
   }
 }
@@ -512,6 +527,7 @@ const ALIAS_LIST = Object.entries(ALIASES)
   .flatMap(([key, as]) => as.map(a => ({ a: normalizeSpeech(a), key })))
   .sort((x, y) => y.a.length - x.a.length);
 
+let lastMissing = [];
 function parseMeasurements(text) {
   const s = normalizeSpeech(text);
   // 先頭から走査し、各位置で一番長い別名に一致したものを項目として確定する
@@ -527,6 +543,8 @@ function parseMeasurements(text) {
     const num = seg.match(/\d+(?:\.\d+)?/);
     if (num && !(h.key in found)) found[h.key] = num[0];
   });
+  // 項目名は聞こえたのに数値が取れなかった項目（警告用）
+  lastMissing = [...new Set(hits.map(h => h.key))].filter(k => !(k in found));
   // 表の列順で返す（コピー書式の並びを従来どおりに保つ）
   const result = {};
   COLUMNS.forEach(c => { if (c.key in found) result[c.key] = found[c.key]; });
@@ -677,6 +695,35 @@ clearAllBtn.addEventListener('click', () => {
   if (rows.length === 0) return;
   if (confirm('すべての採寸データを削除しますか？')) { rows = []; renderTable(); }
 });
+
+// ── 警告音（2026-11-16 追加）──
+//   聞き取れなかった・採寸の数値を拾えなかったときに「ピッピッ」と鳴らす＋振動。
+//   Web Audio で鳴らす（<audio> 要素だと他アプリの再生を止める音声フォーカスを取りやすいため）。
+let audioCtx = null;
+function warnBeep() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const t0 = audioCtx.currentTime;
+    [0, 0.22].forEach(off => {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'square'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t0 + off);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + off + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + off + 0.15);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0 + off); o.stop(t0 + off + 0.16);
+    });
+  } catch (e) {}
+  try { navigator.vibrate && navigator.vibrate([150, 80, 150]); } catch (e) {}
+}
+// 録音ボタンのタップ時に音の再生許可を取っておく（ブラウザはタップ起点でないと鳴らさない）
+function unlockAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) {}
+}
 
 function setStatus(msg, type = '') {
   statusBar.textContent = msg;
